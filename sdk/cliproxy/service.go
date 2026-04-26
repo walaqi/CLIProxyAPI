@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/api"
+	kiroauth "github.com/router-for-me/CLIProxyAPI/v6/internal/auth/kiro"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/registry"
 	"github.com/router-for-me/CLIProxyAPI/v6/internal/runtime/executor"
 	_ "github.com/router-for-me/CLIProxyAPI/v6/internal/usage"
@@ -422,6 +423,8 @@ func (s *Service) ensureExecutorsForAuthWithMode(a *coreauth.Auth, forceReplace 
 		s.coreManager.RegisterExecutor(executor.NewAntigravityExecutor(s.cfg))
 	case "claude":
 		s.coreManager.RegisterExecutor(executor.NewClaudeExecutor(s.cfg))
+	case "kiro":
+		s.coreManager.RegisterExecutor(executor.NewKiroExecutor(s.cfg))
 	case "kimi":
 		s.coreManager.RegisterExecutor(executor.NewKimiExecutor(s.cfg))
 	default:
@@ -699,6 +702,15 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 	watcherWrapper.SetConfig(s.cfg)
 
+	kiroauth.GetRefreshManager().SetOnTokenRefreshed(func(tokenID string, tokenData *kiroauth.KiroTokenData) {
+		if tokenData == nil || watcherWrapper == nil {
+			return
+		}
+		log.Debugf("kiro refresh callback: notifying watcher for token %s", tokenID)
+		watcherWrapper.NotifyTokenRefreshed(tokenID, tokenData.AccessToken, tokenData.RefreshToken, tokenData.ExpiresAt)
+	})
+	log.Debug("kiro: connected background refresh callback to watcher")
+
 	watcherCtx, watcherCancel := context.WithCancel(context.Background())
 	s.watcherCancel = watcherCancel
 	if err = watcherWrapper.Start(watcherCtx); err != nil {
@@ -926,6 +938,9 @@ func (s *Service) registerModelsForAuth(a *coreauth.Auth) {
 		models = applyExcludedModels(models, excluded)
 	case "kimi":
 		models = registry.GetKimiModels()
+		models = applyExcludedModels(models, excluded)
+	case "kiro":
+		models = s.fetchKiroModels(a)
 		models = applyExcludedModels(models, excluded)
 	default:
 		// Handle OpenAI-compatibility providers by name using config
@@ -1541,4 +1556,170 @@ func applyOAuthModelAlias(cfg *config.Config, provider, authKind string, models 
 		}
 	}
 	return out
+}
+
+func (s *Service) fetchKiroModels(a *coreauth.Auth) []*ModelInfo {
+	if a == nil {
+		log.Debug("kiro: auth is nil, using static models")
+		return registry.GetKiroModels()
+	}
+
+	tokenData := s.extractKiroTokenData(a)
+	if tokenData == nil || tokenData.AccessToken == "" {
+		log.Debug("kiro: no valid token data in auth, using static models")
+		return registry.GetKiroModels()
+	}
+
+	kAuth := kiroauth.NewKiroAuth(s.cfg)
+	if kAuth == nil {
+		log.Warn("kiro: failed to create KiroAuth instance, using static models")
+		return registry.GetKiroModels()
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	apiModels, err := kAuth.ListAvailableModels(ctx, tokenData)
+	if err != nil {
+		log.Warnf("kiro: failed to fetch dynamic models: %v, using static models", err)
+		return registry.GetKiroModels()
+	}
+
+	if len(apiModels) == 0 {
+		log.Debug("kiro: API returned no models, using static models")
+		return registry.GetKiroModels()
+	}
+
+	models := convertKiroAPIModels(apiModels)
+	models = generateKiroAgenticVariants(models)
+
+	log.Infof("kiro: successfully fetched %d models from API (including agentic variants)", len(models))
+	return models
+}
+
+func (s *Service) extractKiroTokenData(a *coreauth.Auth) *kiroauth.KiroTokenData {
+	if a == nil || a.Attributes == nil {
+		return nil
+	}
+
+	accessToken := strings.TrimSpace(a.Attributes["access_token"])
+	if accessToken == "" {
+		return nil
+	}
+
+	tokenData := &kiroauth.KiroTokenData{
+		AccessToken: accessToken,
+		ProfileArn:  strings.TrimSpace(a.Attributes["profile_arn"]),
+	}
+
+	if a.Metadata != nil {
+		if rt, ok := a.Metadata["refresh_token"].(string); ok {
+			tokenData.RefreshToken = rt
+		}
+	}
+
+	return tokenData
+}
+
+func convertKiroAPIModels(apiModels []*kiroauth.KiroModel) []*ModelInfo {
+	if len(apiModels) == 0 {
+		return nil
+	}
+
+	now := time.Now().Unix()
+	models := make([]*ModelInfo, 0, len(apiModels))
+
+	for _, m := range apiModels {
+		if m == nil || m.ModelID == "" {
+			continue
+		}
+
+		modelID := "kiro-" + normalizeKiroModelID(m.ModelID)
+
+		info := &ModelInfo{
+			ID:                  modelID,
+			Object:              "model",
+			Created:             now,
+			OwnedBy:             "aws",
+			Type:                "kiro",
+			DisplayName:         formatKiroDisplayName(m.ModelName, m.RateMultiplier),
+			Description:         m.Description,
+			ContextLength:       200000,
+			MaxCompletionTokens: 64000,
+			Thinking:            &registry.ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		}
+
+		if m.MaxInputTokens > 0 {
+			info.ContextLength = m.MaxInputTokens
+		}
+
+		models = append(models, info)
+	}
+
+	return models
+}
+
+func normalizeKiroModelID(modelID string) string {
+	modelID = strings.TrimPrefix(modelID, "anthropic.")
+	modelID = strings.TrimPrefix(modelID, "amazon.")
+	modelID = strings.ReplaceAll(modelID, ".", "-")
+	modelID = strings.ReplaceAll(modelID, "_", "-")
+	return strings.ToLower(modelID)
+}
+
+func formatKiroDisplayName(modelName string, rateMultiplier float64) string {
+	if modelName == "" {
+		return ""
+	}
+	displayName := "Kiro " + modelName
+	if rateMultiplier > 0 && rateMultiplier != 1.0 {
+		displayName += fmt.Sprintf(" (%.1fx credit)", rateMultiplier)
+	}
+	return displayName
+}
+
+func generateKiroAgenticVariants(models []*ModelInfo) []*ModelInfo {
+	if len(models) == 0 {
+		return models
+	}
+
+	result := make([]*ModelInfo, 0, len(models)*2)
+	result = append(result, models...)
+
+	for _, m := range models {
+		if m == nil {
+			continue
+		}
+		if strings.HasSuffix(m.ID, "-agentic") {
+			continue
+		}
+		if strings.Contains(m.ID, "-auto") {
+			continue
+		}
+
+		agentic := &ModelInfo{
+			ID:                  m.ID + "-agentic",
+			Object:              m.Object,
+			Created:             m.Created,
+			OwnedBy:             m.OwnedBy,
+			Type:                m.Type,
+			DisplayName:         m.DisplayName + " (Agentic)",
+			Description:         m.Description + " - Optimized for coding agents (chunked writes)",
+			ContextLength:       m.ContextLength,
+			MaxCompletionTokens: m.MaxCompletionTokens,
+		}
+
+		if m.Thinking != nil {
+			agentic.Thinking = &registry.ThinkingSupport{
+				Min:            m.Thinking.Min,
+				Max:            m.Thinking.Max,
+				ZeroAllowed:    m.Thinking.ZeroAllowed,
+				DynamicAllowed: m.Thinking.DynamicAllowed,
+			}
+		}
+
+		result = append(result, agentic)
+	}
+
+	return result
 }

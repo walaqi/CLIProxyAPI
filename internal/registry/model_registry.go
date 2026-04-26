@@ -1143,7 +1143,7 @@ func (r *ModelRegistry) convertModelToMap(model *ModelInfo, handlerType string) 
 		}
 		return result
 
-	case "claude":
+	case "claude", "kiro":
 		result := map[string]any{
 			"id":       model.ID,
 			"object":   "model",

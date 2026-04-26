@@ -157,3 +157,95 @@ func (w *Watcher) SnapshotCoreAuths() []*coreauth.Auth {
 	w.clientsMutex.RUnlock()
 	return snapshotCoreAuths(cfg, w.authDir)
 }
+
+// NotifyTokenRefreshed updates in-memory kiro auth entries when a background token refresh completes.
+func (w *Watcher) NotifyTokenRefreshed(tokenID, accessToken, refreshToken, expiresAt string) {
+	if w == nil {
+		return
+	}
+
+	w.clientsMutex.Lock()
+	defer w.clientsMutex.Unlock()
+
+	updated := false
+	for id, auth := range w.currentAuths {
+		if auth == nil || auth.Metadata == nil {
+			continue
+		}
+
+		authType, _ := auth.Metadata["type"].(string)
+		if authType != "kiro" {
+			continue
+		}
+
+		matched := false
+
+		if !matched && auth.ID != "" {
+			if auth.ID == tokenID || strings.HasSuffix(auth.ID, "/"+tokenID) || strings.HasSuffix(auth.ID, "\\"+tokenID) {
+				matched = true
+			}
+			if !matched && strings.TrimSuffix(tokenID, ".json") == auth.ID {
+				matched = true
+			}
+		}
+
+		if !matched && auth.Attributes != nil {
+			if authPath := auth.Attributes["path"]; authPath != "" {
+				pathBase := authPath
+				if idx := strings.LastIndexAny(authPath, "/\\"); idx >= 0 {
+					pathBase = authPath[idx+1:]
+				}
+				if pathBase == tokenID || strings.TrimSuffix(pathBase, ".json") == strings.TrimSuffix(tokenID, ".json") {
+					matched = true
+				}
+			}
+		}
+
+		if !matched && auth.FileName != "" {
+			if auth.FileName == tokenID || strings.HasSuffix(auth.FileName, "/"+tokenID) || strings.HasSuffix(auth.FileName, "\\"+tokenID) {
+				matched = true
+			}
+		}
+
+		if matched {
+			auth.Metadata["access_token"] = accessToken
+			auth.Metadata["refresh_token"] = refreshToken
+			auth.Metadata["expires_at"] = expiresAt
+			auth.Metadata["last_refresh"] = time.Now().Format(time.RFC3339)
+			auth.UpdatedAt = time.Now()
+			auth.LastRefreshedAt = time.Now()
+
+			log.Infof("watcher: updated in-memory auth for token %s (auth ID: %s)", tokenID, id)
+			updated = true
+
+			if w.runtimeAuths != nil {
+				if runtimeAuth, ok := w.runtimeAuths[id]; ok && runtimeAuth != nil {
+					if runtimeAuth.Metadata == nil {
+						runtimeAuth.Metadata = make(map[string]any)
+					}
+					runtimeAuth.Metadata["access_token"] = accessToken
+					runtimeAuth.Metadata["refresh_token"] = refreshToken
+					runtimeAuth.Metadata["expires_at"] = expiresAt
+					runtimeAuth.Metadata["last_refresh"] = time.Now().Format(time.RFC3339)
+					runtimeAuth.UpdatedAt = time.Now()
+					runtimeAuth.LastRefreshedAt = time.Now()
+				}
+			}
+
+			if w.authQueue != nil {
+				go func(authClone *coreauth.Auth) {
+					update := AuthUpdate{
+						Action: AuthUpdateActionModify,
+						ID:     authClone.ID,
+						Auth:   authClone,
+					}
+					w.dispatchAuthUpdates([]AuthUpdate{update})
+				}(auth.Clone())
+			}
+		}
+	}
+
+	if !updated {
+		log.Debugf("watcher: no matching auth found for token %s, will be picked up on next file scan", tokenID)
+	}
+}

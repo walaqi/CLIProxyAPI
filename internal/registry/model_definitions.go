@@ -186,6 +186,8 @@ func GetStaticModelDefinitionsByChannel(channel string) []*ModelInfo {
 		return GetKimiModels()
 	case "antigravity":
 		return GetAntigravityModels()
+	case "kiro":
+		return GetKiroModels()
 	default:
 		return nil
 	}
@@ -208,6 +210,8 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 		data.CodexPro,
 		data.Kimi,
 		data.Antigravity,
+		GetKiroModels(),
+		GetAmazonQModels(),
 	}
 	for _, models := range allModels {
 		for _, m := range models {
@@ -218,4 +222,96 @@ func LookupStaticModelInfo(modelID string) *ModelInfo {
 	}
 
 	return nil
+}
+
+// GetKiroModels returns the Kiro (AWS CodeWhisperer) model definitions
+func GetKiroModels() []*ModelInfo {
+	return []*ModelInfo{
+		{
+			ID: "kiro-auto", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Auto", Description: "Automatic model selection by Kiro",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		{
+			ID: "kiro-claude-opus-4-5", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Opus 4.5", Description: "Claude Opus 4.5 via Kiro (2.2x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		{
+			ID: "kiro-claude-sonnet-4-5", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Sonnet 4.5", Description: "Claude Sonnet 4.5 via Kiro (1.3x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		{
+			ID: "kiro-claude-sonnet-4", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Sonnet 4", Description: "Claude Sonnet 4 via Kiro (1.3x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		{
+			ID: "kiro-claude-haiku-4-5", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Haiku 4.5", Description: "Claude Haiku 4.5 via Kiro (0.4x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		// --- Agentic Variants ---
+		{
+			ID: "kiro-claude-opus-4-5-agentic", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Opus 4.5 (Agentic)", Description: "Claude Opus 4.5 optimized for coding agents (chunked writes)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		{
+			ID: "kiro-claude-sonnet-4-5-agentic", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Sonnet 4.5 (Agentic)", Description: "Claude Sonnet 4.5 optimized for coding agents (chunked writes)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		{
+			ID: "kiro-claude-sonnet-4-agentic", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Sonnet 4 (Agentic)", Description: "Claude Sonnet 4 optimized for coding agents (chunked writes)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+		{
+			ID: "kiro-claude-haiku-4-5-agentic", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Kiro Claude Haiku 4.5 (Agentic)", Description: "Claude Haiku 4.5 optimized for coding agents (chunked writes)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+			Thinking: &ThinkingSupport{Min: 1024, Max: 32000, ZeroAllowed: true, DynamicAllowed: true},
+		},
+	}
+}
+
+// GetAmazonQModels returns the Amazon Q (AWS CodeWhisperer) model definitions.
+func GetAmazonQModels() []*ModelInfo {
+	return []*ModelInfo{
+		{
+			ID: "amazonq-auto", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Amazon Q Auto", Description: "Automatic model selection by Amazon Q",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+		},
+		{
+			ID: "amazonq-claude-opus-4.5", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Amazon Q Claude Opus 4.5", Description: "Claude Opus 4.5 via Amazon Q (2.2x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+		},
+		{
+			ID: "amazonq-claude-sonnet-4.5", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Amazon Q Claude Sonnet 4.5", Description: "Claude Sonnet 4.5 via Amazon Q (1.3x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+		},
+		{
+			ID: "amazonq-claude-sonnet-4", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Amazon Q Claude Sonnet 4", Description: "Claude Sonnet 4 via Amazon Q (1.3x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+		},
+		{
+			ID: "amazonq-claude-haiku-4.5", Object: "model", Created: 1732752000, OwnedBy: "aws", Type: "kiro",
+			DisplayName: "Amazon Q Claude Haiku 4.5", Description: "Claude Haiku 4.5 via Amazon Q (0.4x credit)",
+			ContextLength: 200000, MaxCompletionTokens: 64000,
+		},
+	}
 }

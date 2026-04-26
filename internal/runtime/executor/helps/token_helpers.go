@@ -2,6 +2,8 @@ package helps
 
 import (
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -32,6 +34,8 @@ func TokenizerForModel(model string) (tokenizer.Codec, error) {
 		return tokenizer.ForModel(tokenizer.O3)
 	case strings.HasPrefix(sanitized, "o4"):
 		return tokenizer.ForModel(tokenizer.O4Mini)
+	case strings.Contains(sanitized, "claude") || strings.HasPrefix(sanitized, "kiro-") || strings.HasPrefix(sanitized, "amazonq-"):
+		return tokenizer.Get(tokenizer.Cl100kBase)
 	default:
 		return tokenizer.Get(tokenizer.O200kBase)
 	}
@@ -224,6 +228,163 @@ func appendToolPayload(tool gjson.Result, segments *[]string) {
 			addIfNotEmpty(segments, params.Raw)
 		}
 	}
+}
+
+// CountClaudeChatTokens approximates prompt tokens for Claude API chat completions payloads.
+// This handles Claude's message format with system, messages, and tools.
+func CountClaudeChatTokens(enc tokenizer.Codec, payload []byte) (int64, error) {
+	if enc == nil {
+		return 0, fmt.Errorf("encoder is nil")
+	}
+	if len(payload) == 0 {
+		return 0, nil
+	}
+
+	root := gjson.ParseBytes(payload)
+	segments := make([]string, 0, 32)
+
+	collectClaudeSystem(root.Get("system"), &segments)
+	collectClaudeMessages(root.Get("messages"), &segments)
+	collectClaudeTools(root.Get("tools"), &segments)
+
+	joined := strings.TrimSpace(strings.Join(segments, "\n"))
+	if joined == "" {
+		return 0, nil
+	}
+
+	count, err := enc.Count(joined)
+	if err != nil {
+		return 0, err
+	}
+
+	imageTokens := extractImageTokens(joined)
+	return int64(count) + int64(imageTokens), nil
+}
+
+var imageTokenPattern = regexp.MustCompile(`\[IMAGE:(\d+) tokens\]`)
+
+func extractImageTokens(text string) int {
+	matches := imageTokenPattern.FindAllStringSubmatch(text, -1)
+	total := 0
+	for _, match := range matches {
+		if len(match) > 1 {
+			if tokens, err := strconv.Atoi(match[1]); err == nil {
+				total += tokens
+			}
+		}
+	}
+	return total
+}
+
+func estimateImageTokens(width, height float64) int {
+	if width <= 0 || height <= 0 {
+		return 1000
+	}
+	tokens := int(width * height / 750)
+	if tokens < 85 {
+		tokens = 85
+	}
+	if tokens > 1590 {
+		tokens = 1590
+	}
+	return tokens
+}
+
+func collectClaudeSystem(system gjson.Result, segments *[]string) {
+	if !system.Exists() {
+		return
+	}
+	if system.Type == gjson.String {
+		addIfNotEmpty(segments, system.String())
+		return
+	}
+	if system.IsArray() {
+		system.ForEach(func(_, block gjson.Result) bool {
+			blockType := block.Get("type").String()
+			if blockType == "text" || blockType == "" {
+				addIfNotEmpty(segments, block.Get("text").String())
+			}
+			if block.Type == gjson.String {
+				addIfNotEmpty(segments, block.String())
+			}
+			return true
+		})
+	}
+}
+
+func collectClaudeMessages(messages gjson.Result, segments *[]string) {
+	if !messages.Exists() || !messages.IsArray() {
+		return
+	}
+	messages.ForEach(func(_, message gjson.Result) bool {
+		addIfNotEmpty(segments, message.Get("role").String())
+		collectClaudeContent(message.Get("content"), segments)
+		return true
+	})
+}
+
+func collectClaudeContent(content gjson.Result, segments *[]string) {
+	if !content.Exists() {
+		return
+	}
+	if content.Type == gjson.String {
+		addIfNotEmpty(segments, content.String())
+		return
+	}
+	if content.IsArray() {
+		content.ForEach(func(_, part gjson.Result) bool {
+			partType := part.Get("type").String()
+			switch partType {
+			case "text":
+				addIfNotEmpty(segments, part.Get("text").String())
+			case "image":
+				source := part.Get("source")
+				if source.Exists() {
+					w := source.Get("width").Float()
+					h := source.Get("height").Float()
+					if w > 0 && h > 0 {
+						addIfNotEmpty(segments, fmt.Sprintf("[IMAGE:%d tokens]", estimateImageTokens(w, h)))
+					} else {
+						addIfNotEmpty(segments, "[IMAGE:1000 tokens]")
+					}
+				} else {
+					addIfNotEmpty(segments, "[IMAGE:1000 tokens]")
+				}
+			case "tool_use":
+				addIfNotEmpty(segments, part.Get("id").String())
+				addIfNotEmpty(segments, part.Get("name").String())
+				if input := part.Get("input"); input.Exists() {
+					addIfNotEmpty(segments, input.Raw)
+				}
+			case "tool_result":
+				addIfNotEmpty(segments, part.Get("tool_use_id").String())
+				collectClaudeContent(part.Get("content"), segments)
+			case "thinking":
+				addIfNotEmpty(segments, part.Get("thinking").String())
+			default:
+				if part.Type == gjson.String {
+					addIfNotEmpty(segments, part.String())
+				} else if part.Type == gjson.JSON {
+					addIfNotEmpty(segments, part.Raw)
+				}
+			}
+			return true
+		})
+	}
+}
+
+func collectClaudeTools(tools gjson.Result, segments *[]string) {
+	if !tools.Exists() || !tools.IsArray() {
+		return
+	}
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		addIfNotEmpty(segments, tool.Get("name").String())
+		addIfNotEmpty(segments, tool.Get("description").String())
+		if inputSchema := tool.Get("input_schema"); inputSchema.Exists() {
+			addIfNotEmpty(segments, inputSchema.Raw)
+		}
+		return true
+	})
 }
 
 func addIfNotEmpty(segments *[]string, value string) {

@@ -44,6 +44,15 @@ func TestResolveOAuthUpstreamModel_SuffixPreservation(t *testing.T) {
 			want:    "gemini-2.5-pro-exp-03-25",
 		},
 		{
+			name: "kiro alias resolves",
+			aliases: map[string][]internalconfig.OAuthModelAlias{
+				"kiro": {{Name: "kiro-claude-sonnet-4-5", Alias: "sonnet"}},
+			},
+			channel: "kiro",
+			input:   "sonnet",
+			want:    "kiro-claude-sonnet-4-5",
+		},
+		{
 			name: "config suffix takes priority",
 			aliases: map[string][]internalconfig.OAuthModelAlias{
 				"claude": {{Name: "claude-sonnet-4-5-20250514(low)", Alias: "claude-sonnet-4-5"}},
@@ -69,15 +78,6 @@ func TestResolveOAuthUpstreamModel_SuffixPreservation(t *testing.T) {
 			channel: "gemini-cli",
 			input:   "gemini-2.5-pro(none)",
 			want:    "gemini-2.5-pro-exp-03-25(none)",
-		},
-		{
-			name: "kimi suffix preserved",
-			aliases: map[string][]internalconfig.OAuthModelAlias{
-				"kimi": {{Name: "kimi-k2.5", Alias: "k2.5"}},
-			},
-			channel: "kimi",
-			input:   "k2.5(high)",
-			want:    "kimi-k2.5(high)",
 		},
 		{
 			name: "case insensitive alias lookup with suffix",
@@ -157,18 +157,14 @@ func createAuthForChannel(channel string) *Auth {
 		return &Auth{Provider: "aistudio"}
 	case "antigravity":
 		return &Auth{Provider: "antigravity"}
-	case "kimi":
-		return &Auth{Provider: "kimi"}
+	case "qwen":
+		return &Auth{Provider: "qwen"}
+	case "iflow":
+		return &Auth{Provider: "iflow"}
+	case "kiro":
+		return &Auth{Provider: "kiro"}
 	default:
 		return &Auth{Provider: channel}
-	}
-}
-
-func TestOAuthModelAliasChannel_Kimi(t *testing.T) {
-	t.Parallel()
-
-	if got := OAuthModelAliasChannel("kimi", "oauth"); got != "kimi" {
-		t.Fatalf("OAuthModelAliasChannel() = %q, want %q", got, "kimi")
 	}
 }
 

@@ -203,6 +203,16 @@ nonstream-keepalive-interval: 0
 #     experimental-cch-signing: false # optional: default is false; when true, sign the final /v1/messages body using the current Claude Code cch algorithm
 #                                     # keep this disabled unless you explicitly need the behavior, so upstream seed changes fall back to legacy proxy behavior
 
+# Kiro (AWS CodeWhisperer) configuration
+# Note: Kiro API currently only operates in us-east-1 region
+#kiro:
+#  - token-file: "~/.aws/sso/cache/kiro-auth-token.json" # path to Kiro token file
+#    agent-task-type: "" # optional: "vibe" or empty (API default)
+#  - access-token: "aoaAAAAA..." # or provide tokens directly
+#    refresh-token: "aorAAAAA..."
+#    profile-arn: "arn:aws:codewhisperer:us-east-1:..."
+#    proxy-url: "socks5://proxy.example.com:1080" # optional: proxy override
+
 # Default headers for Claude API requests. Update when Claude Code releases new versions.
 # In legacy mode, user-agent/package-version/runtime-version/timeout are used as fallbacks
 # when the client omits them, while OS/arch remain runtime-derived. When
@@ -309,7 +319,7 @@ nonstream-keepalive-interval: 0
 
 # Global OAuth model name aliases (per channel)
 # These aliases rename model IDs for both model listing and request routing.
-# Supported channels: gemini-cli, vertex, aistudio, antigravity, claude, codex, kimi.
+# Supported channels: gemini-cli, vertex, aistudio, antigravity, claude, codex, kimi, kiro.
 # NOTE: Aliases do not apply to gemini-api-key, codex-api-key, claude-api-key, openai-compatibility, vertex-api-key, or ampcode.
 # NOTE: Because aliases affect the merged /v1 model list and merged request routing, overlapping
 # client-visible names can become ambiguous across providers. /api/provider/{provider}/... helps
@@ -339,6 +349,19 @@ nonstream-keepalive-interval: 0
 #   kimi:
 #     - name: "kimi-k2.5"
 #       alias: "k2.5"
+#   kiro:
+#     - name: "kiro-claude-sonnet-4-5"
+#       alias: "claude-sonnet-4.5"
+#       fork: true
+#     - name: "kiro-claude-sonnet-4-5"
+#       alias: "claude-sonnet-4-5"
+#       fork: true
+#     - name: "kiro-claude-haiku-4-5"
+#       alias: "claude-haiku-4.5"
+#       fork: true
+#     - name: "kiro-claude-haiku-4-5"
+#       alias: "claude-haiku-4-5"
+#       fork: true
 
 # OAuth provider excluded models
 # oauth-excluded-models:
@@ -359,6 +382,8 @@ nonstream-keepalive-interval: 0
 #     - "gpt-5-codex-mini"
 #   kimi:
 #     - "kimi-k2-thinking"
+#   kiro:
+#     - "kiro-claude-haiku-4-5"
 
 # Optional payload configuration
 # payload:

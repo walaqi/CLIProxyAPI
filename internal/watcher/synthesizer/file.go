@@ -15,6 +15,13 @@ import (
 	coreauth "github.com/router-for-me/CLIProxyAPI/v6/sdk/cliproxy/auth"
 )
 
+var oauthProviderDefaultPriority = map[string]int{
+	"kiro":           100,
+	"antigravity":    90,
+	"gemini-cli":     80,
+	"github-copilot": 10,
+}
+
 // FileSynthesizer generates Auth entries from OAuth JSON files.
 // It handles file-based authentication and Gemini virtual auth generation.
 type FileSynthesizer struct{}

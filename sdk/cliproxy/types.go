@@ -89,6 +89,7 @@ type WatcherWrapper struct {
 	snapshotAuths         func() []*coreauth.Auth
 	setUpdateQueue        func(queue chan<- watcher.AuthUpdate)
 	dispatchRuntimeUpdate func(update watcher.AuthUpdate) bool
+	notifyTokenRefreshed  func(tokenID, accessToken, refreshToken, expiresAt string)
 }
 
 // Start proxies to the underlying watcher Start implementation.
@@ -145,4 +146,12 @@ func (w *WatcherWrapper) SetAuthUpdateQueue(queue chan<- watcher.AuthUpdate) {
 		return
 	}
 	w.setUpdateQueue(queue)
+}
+
+// NotifyTokenRefreshed notifies the watcher that a background refresher has updated a token.
+func (w *WatcherWrapper) NotifyTokenRefreshed(tokenID, accessToken, refreshToken, expiresAt string) {
+	if w == nil || w.notifyTokenRefreshed == nil {
+		return
+	}
+	w.notifyTokenRefreshed(tokenID, accessToken, refreshToken, expiresAt)
 }

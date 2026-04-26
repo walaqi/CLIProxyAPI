@@ -1,4 +1,4 @@
-// Package main provides the entry point for the CLI Proxy API server.
+﻿// Package main provides the entry point for the CLI Proxy API server.
 // This server acts as a proxy that provides OpenAI/Gemini/Claude compatible API interfaces
 // for CLI models, allowing CLI models to be used with tools and libraries designed for standard AI APIs.
 package main
@@ -73,6 +73,7 @@ func main() {
 	var tuiMode bool
 	var standalone bool
 	var localModel bool
+	var kiroImport bool
 
 	// Define command-line flags for different operation modes.
 	flag.BoolVar(&login, "login", false, "Login Google Account")
@@ -83,6 +84,7 @@ func main() {
 	flag.IntVar(&oauthCallbackPort, "oauth-callback-port", 0, "Override OAuth callback port (defaults to provider-specific port)")
 	flag.BoolVar(&antigravityLogin, "antigravity-login", false, "Login to Antigravity using OAuth")
 	flag.BoolVar(&kimiLogin, "kimi-login", false, "Login to Kimi using OAuth")
+	flag.BoolVar(&kiroImport, "kiro-import", false, "Import Kiro token from Kiro IDE (~/.aws/sso/cache/kiro-auth-token.json)")
 	flag.StringVar(&projectID, "project_id", "", "Project ID (Gemini only, not required)")
 	flag.StringVar(&configPath, "config", DefaultConfigPath, "Configure File Path")
 	flag.StringVar(&vertexImport, "vertex-import", "", "Import Vertex service account key JSON file")
@@ -480,6 +482,8 @@ func main() {
 		cmd.DoClaudeLogin(cfg, options)
 	} else if kimiLogin {
 		cmd.DoKimiLogin(cfg, options)
+	} else if kiroImport {
+		cmd.DoKiroImport(cfg, options)
 	} else {
 		// In cloud deploy mode without config file, just wait for shutdown signals
 		if isCloudDeploy && !configFileExists {
